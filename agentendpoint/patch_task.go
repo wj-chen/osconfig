@@ -21,7 +21,6 @@ import (
 
 	"github.com/GoogleCloudPlatform/guest-logging-go/logger"
 	"github.com/GoogleCloudPlatform/osconfig/config"
-	"github.com/GoogleCloudPlatform/osconfig/inventory"
 	"github.com/GoogleCloudPlatform/osconfig/ospatch"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -238,7 +237,7 @@ func (r *patchTask) run(ctx context.Context) (err error) {
 		}
 		r.complete()
 		if config.OSInventoryEnabled() {
-			go inventory.Run()
+			go r.client.ReportInventory(ctx)
 		}
 	}()
 

@@ -33,7 +33,6 @@ import (
 	"github.com/GoogleCloudPlatform/guest-logging-go/logger"
 	"github.com/GoogleCloudPlatform/osconfig/agentendpoint"
 	"github.com/GoogleCloudPlatform/osconfig/config"
-	"github.com/GoogleCloudPlatform/osconfig/inventory"
 	"github.com/GoogleCloudPlatform/osconfig/packages"
 	"github.com/GoogleCloudPlatform/osconfig/policies"
 	"github.com/GoogleCloudPlatform/osconfig/tasker"
@@ -144,7 +143,13 @@ func run(ctx context.Context) {
 	case "", "run", "noservice":
 		runLoop(ctx)
 	case "inventory", "osinventory":
-		inventory.Run()
+		client, err := agentendpoint.NewClient(ctx)
+		if err != nil {
+			logger.Fatalf(err.Error())
+		}
+		tasker.Enqueue("Report OSInventory", func() {
+			client.ReportInventory(ctx)
+		})
 		tasker.Close()
 		return
 	case "gp", "policies", "guestpolicies", "ospackage":
@@ -216,7 +221,13 @@ func runLoop(ctx context.Context) {
 
 		if config.OSInventoryEnabled() {
 			// This should always run after ospackage.SetConfig.
-			inventory.Run()
+			tasker.Enqueue("Report OSInventory", func() {
+				client, err := agentendpoint.NewClient(ctx)
+				if err != nil {
+					logger.Errorf(err.Error())
+				}
+				client.ReportInventory(ctx)
+			})
 		}
 
 		// Return unused memory to ensure our footprint doesn't keep increasing.

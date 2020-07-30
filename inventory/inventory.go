@@ -17,21 +17,12 @@
 package inventory
 
 import (
-	"fmt"
-	"reflect"
-	"strings"
 	"time"
 
 	"github.com/GoogleCloudPlatform/guest-logging-go/logger"
-	"github.com/GoogleCloudPlatform/osconfig/attributes"
 	"github.com/GoogleCloudPlatform/osconfig/config"
 	"github.com/GoogleCloudPlatform/osconfig/osinfo"
 	"github.com/GoogleCloudPlatform/osconfig/packages"
-	"github.com/GoogleCloudPlatform/osconfig/tasker"
-)
-
-const (
-	inventoryURL = config.ReportURL + "/guestInventory"
 )
 
 // InstanceInventory is an instances inventory data.
@@ -47,29 +38,6 @@ type InstanceInventory struct {
 	InstalledPackages    packages.Packages
 	PackageUpdates       packages.Packages
 	LastUpdated          string
-}
-
-func write(state *InstanceInventory, url string) {
-	logger.Debugf("Writing instance inventory.")
-
-	e := reflect.ValueOf(state).Elem()
-	t := e.Type()
-	for i := 0; i < e.NumField(); i++ {
-		f := e.Field(i)
-		u := fmt.Sprintf("%s/%s", url, t.Field(i).Name)
-		switch f.Kind() {
-		case reflect.String:
-			logger.Debugf("postAttribute %s: %+v", u, f)
-			if err := attributes.PostAttribute(u, strings.NewReader(f.String())); err != nil {
-				logger.Errorf("postAttribute error: %v", err)
-			}
-		case reflect.Struct:
-			logger.Debugf("postAttributeCompressed %s: %+v", u, f)
-			if err := attributes.PostAttributeCompressed(u, f.Interface()); err != nil {
-				logger.Errorf("postAttributeCompressed error: %v", err)
-			}
-		}
-	}
 }
 
 // Get generates inventory data.
@@ -107,9 +75,4 @@ func Get() *InstanceInventory {
 	hs.LastUpdated = time.Now().UTC().Format(time.RFC3339)
 
 	return hs
-}
-
-// Run gathers and records inventory information using tasker.Enqueue.
-func Run() {
-	tasker.Enqueue("Run OSInventory", func() { write(Get(), inventoryURL) })
 }
