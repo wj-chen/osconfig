@@ -31,11 +31,11 @@ import (
 	agentendpointpb "github.com/GoogleCloudPlatform/osconfig/internal/google.golang.org/genproto/googleapis/cloud/osconfig/agentendpoint/v1alpha1"
 	"github.com/GoogleCloudPlatform/osconfig/inventory"
 	"github.com/GoogleCloudPlatform/osconfig/packages"
-	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type agentEndpointServiceInventoryTestServer struct {
@@ -102,6 +102,7 @@ func generateInventoryState(shortName string) *inventory.InstanceInventory {
 				Categories:               []string{"Category"},
 				CategoryIDs:              []string{"CategoryID"},
 				KBArticleIDs:             []string{"KB"},
+				MoreInfoURLs:             []string{"MoreInfoURL"},
 				SupportURL:               "SupportURL",
 				UpdateID:                 "UpdateID",
 				RevisionNumber:           1,
@@ -124,6 +125,7 @@ func generateInventoryState(shortName string) *inventory.InstanceInventory {
 				Categories:               []string{"Category"},
 				CategoryIDs:              []string{"CategoryID"},
 				KBArticleIDs:             []string{"KB"},
+				MoreInfoURLs:             []string{"MoreInfoURL"},
 				SupportURL:               "SupportURL",
 				UpdateID:                 "UpdateID",
 				RevisionNumber:           1,
@@ -216,17 +218,17 @@ func generateInventory(shortName string) *agentendpointpb.Inventory {
 							Id:   "CategoryID",
 							Name: "Category"}},
 						KbArticleIds:             []string{"KB"},
-						SupportUrls:              []string{},
+						SupportUrls:              []string{"MoreInfoURL"},
 						UpdateId:                 "UpdateID",
 						RevisionNumber:           1,
-						LastDeploymentChangeTime: &timestamp.Timestamp{Seconds: 1605049200}}}},
+						LastDeploymentChangeTime: timestamppb.New(time.Date(2020, time.November, 10, 23, 0, 0, 0, time.UTC))}}},
 			&agentendpointpb.Inventory_SoftwarePackage{
 				Details: &agentendpointpb.Inventory_SoftwarePackage_QfePackage{
 					QfePackage: &agentendpointpb.Inventory_WindowsQuickFixEngineeringPackage{
 						Caption:     "QFEInstalled",
 						Description: "Description",
 						HotFixId:    "HotFixID",
-						InstalledOn: &timestamp.Timestamp{Seconds: 1598918400}}}},
+						InstalledOn: timestamppb.New(time.Date(2020, time.September, 1, 0, 0, 0, 0, time.UTC))}}},
 			&agentendpointpb.Inventory_SoftwarePackage{
 				Details: &agentendpointpb.Inventory_SoftwarePackage_AptPackage{
 					AptPackage: &agentendpointpb.Inventory_VersionedPackage{
@@ -276,17 +278,17 @@ func generateInventory(shortName string) *agentendpointpb.Inventory {
 							Id:   "CategoryID",
 							Name: "Category"}},
 						KbArticleIds:             []string{"KB"},
-						SupportUrls:              []string{},
+						SupportUrls:              []string{"MoreInfoURL"},
 						UpdateId:                 "UpdateID",
 						RevisionNumber:           1,
-						LastDeploymentChangeTime: &timestamp.Timestamp{Seconds: -62135596800}}}},
+						LastDeploymentChangeTime: timestamppb.New(time.Time{})}}},
 			&agentendpointpb.Inventory_SoftwarePackage{
 				Details: &agentendpointpb.Inventory_SoftwarePackage_QfePackage{
 					QfePackage: &agentendpointpb.Inventory_WindowsQuickFixEngineeringPackage{
 						Caption:     "QFEUpdate",
 						Description: "Description",
 						HotFixId:    "HotFixID",
-						InstalledOn: &timestamp.Timestamp{Seconds: -62135596800}}}},
+						InstalledOn: timestamppb.New(time.Time{})}}},
 			&agentendpointpb.Inventory_SoftwarePackage{
 				Details: &agentendpointpb.Inventory_SoftwarePackage_AptPackage{
 					AptPackage: &agentendpointpb.Inventory_VersionedPackage{
@@ -396,7 +398,8 @@ func TestWrite(t *testing.T) {
 	}))
 	defer svr.Close()
 
-	write(inv, svr.URL)
+	ctx := context.Background()
+	write(ctx, inv, svr.URL)
 
 	for k, v := range want {
 		if v {

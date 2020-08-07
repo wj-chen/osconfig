@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GoogleCloudPlatform/guest-logging-go/logger"
 	"github.com/GoogleCloudPlatform/osconfig/attributes"
+	"github.com/GoogleCloudPlatform/osconfig/clog"
 	"github.com/GoogleCloudPlatform/osconfig/config"
 	agentendpointpb "github.com/GoogleCloudPlatform/osconfig/internal/google.golang.org/genproto/googleapis/cloud/osconfig/agentendpoint/v1alpha1"
 	"github.com/GoogleCloudPlatform/osconfig/inventory"
@@ -23,13 +23,13 @@ const (
 
 // ReportInventory reports inventory to agent endpoint and writes it to guest attributes.
 func (c *Client) ReportInventory(ctx context.Context) {
-	state := inventory.Get()
-	write(state, inventoryURL)
+	state := inventory.Get(ctx)
+	write(ctx, state, inventoryURL)
 	c.report(ctx, state)
 }
 
-func write(state *inventory.InstanceInventory, url string) {
-	logger.Debugf("Writing instance inventory to guest attributes.")
+func write(ctx context.Context, state *inventory.InstanceInventory, url string) {
+	clog.Debugf(ctx, "Writing instance inventory to guest attributes.")
 
 	e := reflect.ValueOf(state).Elem()
 	t := e.Type()
@@ -38,29 +38,29 @@ func write(state *inventory.InstanceInventory, url string) {
 		u := fmt.Sprintf("%s/%s", url, t.Field(i).Name)
 		switch f.Kind() {
 		case reflect.String:
-			logger.Debugf("postAttribute %s: %+v", u, f)
+			clog.Debugf(ctx, "postAttribute %s: %+v", u, f)
 			if err := attributes.PostAttribute(u, strings.NewReader(f.String())); err != nil {
-				logger.Errorf("postAttribute error: %v", err)
+				clog.Errorf(ctx, "postAttribute error: %v", err)
 			}
 		case reflect.Struct:
-			logger.Debugf("postAttributeCompressed %s: %+v", u, f)
+			clog.Debugf(ctx, "postAttributeCompressed %s: %+v", u, f)
 			if err := attributes.PostAttributeCompressed(u, f.Interface()); err != nil {
-				logger.Errorf("postAttributeCompressed error: %v", err)
+				clog.Errorf(ctx, "postAttributeCompressed error: %v", err)
 			}
 		}
 	}
 }
 
 func (c *Client) report(ctx context.Context, state *inventory.InstanceInventory) {
-	logger.Debugf("Reporting instance inventory to agent endpoint.")
-	inventory := formatInventory(state)
+	clog.Debugf(ctx, "Reporting instance inventory to agent endpoint.")
+	inventory := formatInventory(ctx, state)
 
 	reportFull := false
 	retries := 0
 	for {
 		res, err := c.reportInventory(ctx, inventory, reportFull)
 		if err != nil {
-			logger.Errorf("Error reporting inventory: %v", err)
+			clog.Errorf(ctx, "Error reporting inventory: %v", err)
 		}
 
 		if !res.GetReportFullInventory() {
@@ -71,13 +71,13 @@ func (c *Client) report(ctx context.Context, state *inventory.InstanceInventory)
 
 		retries++
 		if retries >= maxRetries {
-			logger.Errorf("Error reporting inventory: exceeded %d tries", maxRetries)
+			clog.Errorf(ctx, "Error reporting inventory: exceeded %d tries", maxRetries)
 			break
 		}
 	}
 }
 
-func formatInventory(state *inventory.InstanceInventory) *agentendpointpb.Inventory {
+func formatInventory(ctx context.Context, state *inventory.InstanceInventory) *agentendpointpb.Inventory {
 	osInfo := &agentendpointpb.Inventory_OsInfo{
 		HostName:             state.Hostname,
 		LongName:             state.LongName,
@@ -88,14 +88,14 @@ func formatInventory(state *inventory.InstanceInventory) *agentendpointpb.Invent
 		KernelRelease:        state.KernelRelease,
 		OsconfigAgentVersion: state.OSConfigAgentVersion,
 	}
-	installedPackages := formatPackages(state.InstalledPackages, state.ShortName)
-	availablePackages := formatPackages(state.PackageUpdates, state.ShortName)
+	installedPackages := formatPackages(ctx, state.InstalledPackages, state.ShortName)
+	availablePackages := formatPackages(ctx, state.PackageUpdates, state.ShortName)
 
-	logger.Debugf("%v%v", osInfo, installedPackages)
+	clog.Debugf(ctx, "%v%v", osInfo, installedPackages)
 	return &agentendpointpb.Inventory{OsInfo: osInfo, InstalledPackages: installedPackages, AvailablePackages: availablePackages}
 }
 
-func formatPackages(packages packages.Packages, shortName string) []*agentendpointpb.Inventory_SoftwarePackage {
+func formatPackages(ctx context.Context, packages packages.Packages, shortName string) []*agentendpointpb.Inventory_SoftwarePackage {
 	var softwarePackages []*agentendpointpb.Inventory_SoftwarePackage
 	if packages.Apt != nil {
 		for _, pkg := range packages.Apt {
@@ -142,7 +142,7 @@ func formatPackages(packages packages.Packages, shortName string) []*agentendpoi
 	if packages.QFE != nil {
 		for _, pkg := range packages.QFE {
 			softwarePackages = append(softwarePackages, &agentendpointpb.Inventory_SoftwarePackage{
-				Details: formatQFEPackage(pkg),
+				Details: formatQFEPackage(ctx, pkg),
 			})
 		}
 	}
@@ -228,26 +228,23 @@ func formatWUAPackage(pkg packages.WUAPackage) *agentendpointpb.Inventory_Softwa
 		})
 	}
 
-	// TODO: Populate supportUrls with MoreInfoUrls.
-	supportUrls := []string{}
-
 	return &agentendpointpb.Inventory_SoftwarePackage_WuaPackage{
 		WuaPackage: &agentendpointpb.Inventory_WindowsUpdatePackage{
 			Title:                    pkg.Title,
 			Description:              pkg.Description,
 			Categories:               categories,
 			KbArticleIds:             pkg.KBArticleIDs,
-			SupportUrls:              supportUrls,
+			SupportUrls:              pkg.MoreInfoURLs,
 			UpdateId:                 pkg.UpdateID,
 			RevisionNumber:           pkg.RevisionNumber,
 			LastDeploymentChangeTime: timestamppb.New(pkg.LastDeploymentChangeTime),
 		}}
 }
 
-func formatQFEPackage(pkg packages.QFEPackage) *agentendpointpb.Inventory_SoftwarePackage_QfePackage {
+func formatQFEPackage(ctx context.Context, pkg packages.QFEPackage) *agentendpointpb.Inventory_SoftwarePackage_QfePackage {
 	installedTime, err := time.Parse("1/2/2006", pkg.InstalledOn)
 	if err != nil {
-		logger.Errorf("Error parsing QFE InstalledOn date: %v", err)
+		clog.Errorf(ctx, "Error parsing QFE InstalledOn date: %v", err)
 	}
 
 	return &agentendpointpb.Inventory_SoftwarePackage_QfePackage{

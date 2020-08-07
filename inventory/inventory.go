@@ -17,9 +17,10 @@
 package inventory
 
 import (
+	"context"
 	"time"
 
-	"github.com/GoogleCloudPlatform/guest-logging-go/logger"
+	"github.com/GoogleCloudPlatform/osconfig/clog"
 	"github.com/GoogleCloudPlatform/osconfig/config"
 	"github.com/GoogleCloudPlatform/osconfig/osinfo"
 	"github.com/GoogleCloudPlatform/osconfig/packages"
@@ -41,24 +42,24 @@ type InstanceInventory struct {
 }
 
 // Get generates inventory data.
-func Get() *InstanceInventory {
-	logger.Debugf("Gathering instance inventory.")
+func Get(ctx context.Context) *InstanceInventory {
+	clog.Debugf(ctx, "Gathering instance inventory.")
 
 	hs := &InstanceInventory{}
 
-	installedPackages, err := packages.GetInstalledPackages()
+	installedPackages, err := packages.GetInstalledPackages(ctx)
 	if err != nil {
-		logger.Errorf("packages.GetInstalledPackages() error: %v", err)
+		clog.Errorf(ctx, "packages.GetInstalledPackages() error: %v", err)
 	}
 
-	packageUpdates, err := packages.GetPackageUpdates()
+	packageUpdates, err := packages.GetPackageUpdates(ctx)
 	if err != nil {
-		logger.Errorf("packages.GetPackageUpdates() error: %v", err)
+		clog.Errorf(ctx, "packages.GetPackageUpdates() error: %v", err)
 	}
 
 	oi, err := osinfo.Get()
 	if err != nil {
-		logger.Errorf("osinfo.Get() error: %v", err)
+		clog.Errorf(ctx, "osinfo.Get() error: %v", err)
 	}
 
 	hs.Hostname = oi.Hostname
